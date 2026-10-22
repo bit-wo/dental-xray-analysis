@@ -1,73 +1,58 @@
-# Dental X-ray Analysis — Research Prototype
+# Dental X-ray Analysis
 
-A Gradio prototype combining:
-- a 32-class YOLO segmentation model for candidate FDI tooth numbering
-- a YOLO disease detector for its trained disease classes
-- a basic geometry-based matching step
-- an annotated image and a results table
+An academic research prototype combining YOLO-based tooth segmentation, FDI tooth numbering, dental disease detection, and geometry-based matching in a Gradio web application.
 
-## Important limitations
+**Disclaimer:** This project is for research and educational purposes only. It is not clinically validated and must not be used for diagnosis or treatment decisions.
 
-This is an experimental research/educational tool, **not a clinical diagnostic system**.
-The disease confidence is not the same as confidence in the assigned tooth number.
-Overlap scores are geometric evidence only. Do not use these outputs for clinical decisions.
+## Features
 
-The current matching thresholds are provisional engineering heuristics and have not
-been clinically validated. Evaluate against suitable ground-truth annotations before
-making accuracy claims.
+- Panoramic dental X-ray upload.
+- Tooth segmentation and candidate FDI numbering (32 classes).
+- Dental disease detection.
+- Geometry-based candidate tooth–disease matching.
+- Annotated X-ray visualization and results table.
 
-## Project layout
+## Models
 
-```text
-dental-xray-app/
-├── app.py
-├── src/
-│   ├── __init__.py
-│   └── pipeline.py
-├── models/                 # Local only; not committed to Git
-│   ├── tooth-segmentation.pt
-│   └── dental-disease.pt
-├── requirements.txt
-├── .gitignore
-└── README.md
-```
+| Model | File | Source |
+|---|---|---|
+| Tooth segmentation | `models/tooth-segmentation.pt` | Custom-trained for this project |
+| Disease detection | `models/dental-disease.pt` | [Hugging Face model](https://huggingface.co/chemahc94/caries-detection-weights) |
 
-## Setup
+The disease detector's reported classes are Impacted, Caries, Periapical Lesion, and Deep Caries.
 
-Python 3.10 or 3.11 is recommended. Create a virtual environment:
+## Dataset
+
+The exact dataset used to train the tooth-segmentation model has not yet been verified. DENTEX is a possible source, but this must be confirmed before claiming it was used.
+
+- [DENTEX official challenge](https://dentex.grand-challenge.org/)
+- [DENTEX dataset repository](https://github.com/ibrahimethemhamamci/DENTEX)
+- [DENTEX research paper](https://arxiv.org/abs/2305.19112)
+
+## Installation
+
+**Requirements:** Python 3.10 or 3.11 recommended.
 
 ```bash
+git clone YOUR_GITHUB_REPOSITORY_URL
+cd dental-xray-app
+
 python -m venv .venv
 source .venv/bin/activate
+
 pip install -r requirements.txt
-```
-
-Put the model checkpoints in `models/` using these names:
-
-- `models/tooth-segmentation.pt` — your trained 32-class segmentation checkpoint
-- `models/dental-disease.pt` — the pretrained disease detector checkpoint
-
-Then run:
-
-```bash
 python app.py
 ```
 
-Gradio prints a local URL, normally `http://127.0.0.1:7860`.
+On Windows, activate the environment using `.venv\Scripts\activate`.
 
-## GitHub
+Place both model files in the `models/` directory before running the application. Open the local URL printed by Gradio, normally `http://127.0.0.1:7860`.
 
-Do not commit model weights, X-rays, patient data, datasets, tokens, or secrets.
-The `.gitignore` excludes model files and common data folders. Check the model license
-before redistributing weights or deploying the app, especially for commercial use.
+## Limitations
 
-```bash
-git init
-git add app.py src requirements.txt README.md .gitignore
-git commit -m "Create dental X-ray research prototype"
-git branch -M main
-git remote add origin YOUR_GITHUB_REPOSITORY_URL
-git push -u origin main
-```
+- Predictions and tooth numbering may be incorrect.
+- Disease confidence is not diagnostic certainty.
+- Matching scores measure geometric overlap, not clinical correctness.
+- Matching thresholds are experimental and have not been clinically validated.
 
-Replace `YOUR_GITHUB_REPOSITORY_URL` with the repository URL you create on GitHub.
+Ground-truth annotations and appropriate evaluation are required before making accuracy claims.
