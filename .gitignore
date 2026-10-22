@@ -1,9 +1,5 @@
 # Model weights and datasets should not be committed
-models/
 datasets/
-*.pt
-*.pth
-*.onnx
 
 # Python
 __pycache__/
