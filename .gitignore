@@ -1,0 +1,19 @@
+# Model weights and datasets should not be committed
+models/
+datasets/
+*.pt
+*.pth
+*.onnx
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Notebooks and generated output
+.ipynb_checkpoints/
+outputs/
+*.csv
+.DS_Store
