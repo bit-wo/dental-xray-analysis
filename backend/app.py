@@ -3,9 +3,11 @@ Flask REST API for Dental X-ray Analysis.
 Wraps the existing YOLO-based pipeline for tooth segmentation and disease detection.
 """
 
+import io
 import os
 import tempfile
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +16,14 @@ import numpy as np
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 from PIL import Image
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch, mm
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    Image as RLImage, PageBreak, KeepTogether
+)
 from ultralytics import YOLO
 from werkzeug.utils import secure_filename
 
@@ -487,6 +497,327 @@ def get_image(filename: str):
         return jsonify({"error": "Image not found"}), 404
 
     return send_file(filepath, mimetype="image/png")
+
+
+# ---------------- PDF REPORT GENERATION ----------------
+
+def generate_pdf_report(analysis_data: dict, original_filename: str = "unknown") -> bytes:
+    """Generate a PDF report from analysis data."""
+    buffer = io.BytesIO()
+    
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=20*mm,
+        leftMargin=20*mm,
+        topMargin=20*mm,
+        bottomMargin=20*mm,
+    )
+    
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        leading=22,
+        spaceAfter=6,
+        textColor=colors.HexColor('#1e293b'),
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Heading2'],
+        fontSize=14,
+        leading=18,
+        spaceAfter=4,
+        spaceBefore=12,
+        textColor=colors.HexColor('#334155'),
+    )
+    
+    body_style = ParagraphStyle(
+        'CustomBody',
+        parent=styles['Normal'],
+        fontSize=10,
+        leading=14,
+        spaceAfter=4,
+        textColor=colors.HexColor('#334155'),
+    )
+    
+    small_style = ParagraphStyle(
+        'CustomSmall',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=11,
+        spaceAfter=2,
+        textColor=colors.HexColor('#64748b'),
+    )
+    
+    disclaimer_style = ParagraphStyle(
+        'DisclaimerStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=12,
+        spaceAfter=6,
+        spaceBefore=6,
+        textColor=colors.HexColor('#78350f'),
+        backColor=colors.HexColor('#fef3c7'),
+        borderPadding=8,
+        borderWidth=1,
+        borderColor=colors.HexColor('#fcd34d'),
+    )
+    
+    story = []
+    
+    # Title
+    story.append(Paragraph("Dental X-ray Analysis Report", title_style))
+    story.append(Paragraph("Research Prototype — Not for Clinical Use", ParagraphStyle(
+        'Subtitle', parent=styles['Normal'], fontSize=11, textColor=colors.HexColor('#dc2626'), spaceAfter=12
+    )))
+    story.append(Spacer(1, 6))
+    
+    # Metadata
+    story.append(Paragraph(f"<b>Generated:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", body_style))
+    story.append(Paragraph(f"<b>Source Image:</b> {original_filename}", body_style))
+    story.append(Paragraph(f"<b>Image Dimensions:</b> {analysis_data.get('image', {}).get('width', 'N/A')} × {analysis_data.get('image', {}).get('height', 'N/A')} px", body_style))
+    story.append(Spacer(1, 8))
+    
+    # Disclaimer
+    disclaimer_text = (
+        "<b>IMPORTANT DISCLAIMER:</b> This report is generated from model predictions for research "
+        "and educational purposes only. It is <b>not clinically validated</b> and must not be used "
+        "for diagnosis, treatment planning, or any clinical decision-making. All model predictions "
+        "(segmentation, disease detection, tooth numbering) can be incorrect. A qualified dental "
+        "professional must review the original radiograph."
+    )
+    story.append(Paragraph(disclaimer_text, disclaimer_style))
+    story.append(Spacer(1, 6))
+    
+    # Summary section
+    story.append(Paragraph("Summary", subtitle_style))
+    
+    summary = analysis_data.get('summary', {})
+    segmentation = analysis_data.get('segmentation', {})
+    
+    summary_data = [
+        ['Metric', 'Value'],
+        ['Total Teeth Segmented', str(summary.get('total_teeth_segmented', segmentation.get('teeth_count', 0)))],
+        ['Total Disease Detections', str(summary.get('total_detections', 0))],
+        ['Matched Detections (Tooth Association)', str(summary.get('matched_detections', 0))],
+        ['Unmatched Detections', str(summary.get('total_detections', 0) - summary.get('matched_detections', 0))],
+    ]
+    
+    det_cats = summary.get('detection_categories', [])
+    if det_cats:
+        summary_data.append(['Detection Categories', ', '.join(det_cats)])
+    
+    summary_table = Table(summary_data, colWidths=[100*mm, 70*mm])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0d9488')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f0fdfa')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#99f6e4')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    story.append(summary_table)
+    story.append(Spacer(1, 12))
+    
+    # Segmentation details
+    if segmentation.get('teeth'):
+        story.append(Paragraph("Segmented Teeth", subtitle_style))
+        seg_data = [['FDI', 'Class ID', 'Confidence']]
+        for tooth in sorted(segmentation['teeth'], key=lambda t: t.get('fdi') or 99):
+            fdi = f"FDI {tooth['fdi']}" if tooth.get('fdi') else 'Unknown'
+            seg_data.append([
+                fdi,
+                str(tooth.get('class_id', 'N/A')),
+                f"{tooth.get('confidence', 0)*100:.1f}%"
+            ])
+        
+        seg_table = Table(seg_data, colWidths=[60*mm, 40*mm, 70*mm])
+        seg_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0d9488')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+            ('TOPPADDING', (0, 0), (-1, 0), 6),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f0fdfa')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#99f6e4')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        story.append(seg_table)
+        story.append(Spacer(1, 12))
+    
+    # Disease detections
+    detections = analysis_data.get('detections', [])
+    if detections:
+        story.append(Paragraph("Disease Findings", subtitle_style))
+        
+        det_data = [['#', 'Disease', 'Confidence', 'Candidate FDI', 'Tooth Conf.', 'Mask Cov.', 'IoU', 'Status']]
+        for det in detections:
+            fdi = f"FDI {det['candidate_fdi']}" if det.get('candidate_fdi') else 'Not assigned'
+            tooth_conf = f"{det['tooth_confidence']*100:.1f}%" if det.get('tooth_confidence') is not None else 'N/A'
+            mask_cov = f"{det.get('mask_coverage', 0)*100:.1f}%"
+            iou = f"{det.get('iou', 0)*100:.1f}%"
+            status = det.get('status', 'Unknown')
+            # Shorten status for table
+            if 'Candidate match' in status:
+                status = 'Candidate match'
+            elif 'Uncertain' in status:
+                status = 'Uncertain match'
+            elif 'No confident' in status:
+                status = 'No match'
+            elif 'Low-confidence' in status:
+                status = 'Low confidence'
+            
+            det_data.append([
+                str(det.get('detection', '')),
+                det.get('disease', ''),
+                f"{det.get('disease_confidence', 0)*100:.1f}%",
+                fdi,
+                tooth_conf,
+                mask_cov,
+                iou,
+                status,
+            ])
+        
+        det_table = Table(det_data, colWidths=[10*mm, 25*mm, 20*mm, 25*mm, 20*mm, 20*mm, 20*mm, 30*mm])
+        det_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#dc2626')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+            ('TOPPADDING', (0, 0), (-1, 0), 6),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#fef2f2')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#fecaca')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        story.append(det_table)
+        story.append(Spacer(1, 12))
+    else:
+        story.append(Paragraph("No disease detections found above the configured threshold.", body_style))
+        story.append(Paragraph("This does not establish that the X-ray is free of disease. Manual professional review is required.", small_style))
+        story.append(Spacer(1, 12))
+    
+    # Interpretation section
+    if detections:
+        story.append(Paragraph("Findings Interpretation", subtitle_style))
+        for det in detections:
+            fdi = f"FDI {det['candidate_fdi']}" if det.get('candidate_fdi') else 'Not assigned'
+            disease = det.get('disease', 'Unknown')
+            conf = f"{det.get('disease_confidence', 0)*100:.1f}%"
+            
+            interp_text = (
+                f"<b>Finding {det.get('detection', '')}: {disease}</b> (Model confidence: {conf}). "
+                f"Candidate tooth: {fdi}. "
+            )
+            if det.get('candidate_fdi'):
+                interp_text += (
+                    f"The model detected a potential {disease.lower()} finding and geometrically "
+                    f"associated it with candidate FDI tooth {det['candidate_fdi']}. "
+                )
+            else:
+                interp_text += (
+                    f"The model detected a potential {disease.lower()} finding, but it did not "
+                    f"assign a sufficiently supported candidate tooth. "
+                )
+            interp_text += "Manual review by a qualified dental professional is required."
+            
+            story.append(Paragraph(interp_text, body_style))
+            story.append(Spacer(1, 4))
+    
+    # Add annotated image if available
+    if analysis_data.get('images', {}).get('combined'):
+        story.append(Paragraph("Annotated Image (Combined View)", subtitle_style))
+        story.append(Paragraph(
+            "Green: predicted tooth masks. Yellow: candidate FDI labels. "
+            "Red: disease detection boxes. These are predictions, not verified anatomy.",
+            small_style
+        ))
+        story.append(Spacer(1, 6))
+        
+        try:
+            # Try to load and embed the combined image
+            img_url = analysis_data['images']['combined']
+            # Since we're on the same server, load from filesystem
+            img_filename = os.path.basename(img_url)
+            img_path = TEMP_DIR / img_filename
+            if img_path.exists():
+                # Scale image to fit page width (max ~170mm)
+                with Image.open(img_path) as pil_img:
+                    img_w, img_h = pil_img.size
+                    aspect = img_h / img_w
+                    max_w = 170 * mm
+                    max_h = 200 * mm
+                    # Convert pixels to points (1 inch = 72 points, assume 96 DPI for screen images)
+                    # Better: use the actual pixel dimensions and scale proportionally
+                    display_w = min(img_w * 0.75, max_w)  # 0.75 points per pixel at 96 DPI
+                    display_h = display_w * aspect
+                    if display_h > max_h:
+                        display_h = max_h
+                        display_w = display_h / aspect
+                    
+                    rl_img = RLImage(str(img_path), width=display_w, height=display_h)
+                    story.append(rl_img)
+        except Exception as e:
+            story.append(Paragraph(f"[Image could not be embedded: {e}]", small_style))
+    
+    # Footer
+    story.append(Spacer(1, 20))
+    story.append(Paragraph(
+        "This report was generated automatically by DentalAI (Research Prototype). "
+        "Model confidence scores are not calibrated probabilities of clinical truth. "
+        "Tooth associations are geometric estimates based on spatial overlap.",
+        small_style
+    ))
+    
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.read()
+
+
+@app.route("/api/report", methods=["POST"])
+def generate_report():
+    """Generate a PDF report from analysis data."""
+    if not request.is_json:
+        return jsonify({"success": False, "error": "Request must be JSON"}), 400
+    
+    data = request.get_json()
+    
+    if not data or 'analysis' not in data:
+        return jsonify({"success": False, "error": "Missing analysis data"}), 400
+    
+    analysis = data['analysis']
+    original_filename = data.get('original_filename', 'unknown')
+    
+    if not analysis.get('success', False):
+        return jsonify({"success": False, "error": "Analysis data indicates failure"}), 400
+    
+    try:
+        pdf_bytes = generate_pdf_report(analysis, original_filename)
+        
+        timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+        filename = f"dental-analysis-{timestamp}.pdf"
+        
+        return send_file(
+            io.BytesIO(pdf_bytes),
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as exc:
+        return jsonify({
+            "success": False,
+            "error": "PDF generation failed",
+            "details": str(exc)
+        }), 500
 
 
 if __name__ == "__main__":

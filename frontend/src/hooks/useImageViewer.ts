@@ -5,25 +5,27 @@ interface ViewerState {
   x: number;
   y: number;
   isPanning: boolean;
-  isFullscreen: boolean;
 }
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 5;
 const DEFAULT_SCALE = 1;
 
-export function useImageViewer() {
+export function useImageViewer(src?: string) {
   const [state, setState] = useState<ViewerState>({
     scale: DEFAULT_SCALE,
     x: 0,
     y: 0,
     isPanning: false,
-    isFullscreen: false,
   });
+  
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const isMountedRef = useRef(true);
 
   // Reset view to fit container
   const resetView = useCallback(() => {
@@ -34,6 +36,11 @@ export function useImageViewer() {
       y: 0,
     }));
   }, []);
+
+  // Reset view when src changes
+  useEffect(() => {
+    resetView();
+  }, [src, resetView]);
 
   // Zoom to specific scale, centered on a point
   const zoomTo = useCallback((scale: number, centerX?: number, centerY?: number) => {
@@ -88,7 +95,6 @@ export function useImageViewer() {
   const zoomIn = useCallback(() => {
     setState(prev => {
       const newScale = Math.min(MAX_SCALE, prev.scale * 1.2);
-      // Trigger zoomTo logic via a micro-task
       setTimeout(() => zoomTo(newScale), 0);
       return prev;
     });
@@ -102,23 +108,23 @@ export function useImageViewer() {
     });
   }, [zoomTo]);
 
-  // Handle wheel zoom
+  // Handle wheel zoom - in fullscreen, zoom without modifier; in normal mode, require Ctrl/Cmd
   const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (!isFullscreen && !(e.ctrlKey || e.metaKey)) return;
+    
     e.preventDefault();
-    if (e.ctrlKey || e.metaKey) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const centerX = e.clientX - rect.left;
-      const centerY = e.clientY - rect.top;
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newScale = state.scale * delta;
-      zoomTo(newScale, centerX, centerY);
-    }
-  }, [state.scale, zoomTo]);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const centerX = e.clientX - rect.left;
+    const centerY = e.clientY - rect.top;
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = state.scale * delta;
+    zoomTo(newScale, centerX, centerY);
+  }, [state.scale, zoomTo, isFullscreen]);
 
   // Pan start
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return; // Only left click
-    if (state.scale <= DEFAULT_SCALE && !state.isFullscreen) return;
+    if (state.scale <= DEFAULT_SCALE) return;
     
     e.preventDefault();
     panStartRef.current = { x: e.clientX, y: e.clientY };
@@ -126,7 +132,7 @@ export function useImageViewer() {
     
     // Prevent text selection while panning
     document.body.style.userSelect = 'none';
-  }, [state.scale, state.isFullscreen]);
+  }, [state.scale]);
 
   // Pan move
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -230,28 +236,58 @@ export function useImageViewer() {
     setState(prev => ({ ...prev, isPanning: false }));
   }, []);
 
-  // Fullscreen toggle
+  // Fullscreen handling using native browser API on wrapper element
   const toggleFullscreen = useCallback(() => {
-    setState(prev => ({ ...prev, isFullscreen: !prev.isFullscreen }));
-  }, []);
+    if (!wrapperRef.current) return;
+    
+    if (!isFullscreen) {
+      // Enter fullscreen
+      const element = wrapperRef.current;
+      element.requestFullscreen().catch(() => {
+        // Fullscreen request failed
+      });
+    } else {
+      // Exit fullscreen
+      document.exitFullscreen().catch(() => {
+        // Exit fullscreen failed
+      });
+    }
+  }, [isFullscreen]);
+
+  // Handle fullscreen change events
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isNowFullscreen = !!document.fullscreenElement;
+      setIsFullscreen(isNowFullscreen);
+      if (!isNowFullscreen) {
+        // Reset zoom and pan when exiting fullscreen
+        resetView();
+      }
+    };
+    
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [resetView]);
 
   // Close fullscreen on Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && state.isFullscreen) {
-        setState(prev => ({ ...prev, isFullscreen: false }));
+      if (e.key === 'Escape' && isFullscreen) {
+        document.exitFullscreen().catch(() => {});
       }
     };
     
-    if (state.isFullscreen) {
+    if (isFullscreen) {
       document.addEventListener('keydown', handleKeyDown);
     }
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [state.isFullscreen]);
+  }, [isFullscreen]);
 
   // Cleanup on unmount
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       document.body.style.userSelect = '';
     };
   }, []);
@@ -266,6 +302,7 @@ export function useImageViewer() {
   return {
     containerRef,
     imageRef,
+    wrapperRef,
     state,
     imageStyle,
     zoomTo,
@@ -273,6 +310,7 @@ export function useImageViewer() {
     zoomOut,
     resetView,
     toggleFullscreen,
+    isFullscreen,
     handleWheel,
     handleMouseDown,
     handleMouseMove,

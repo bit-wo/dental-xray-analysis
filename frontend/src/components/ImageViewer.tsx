@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import {
   ZoomIn,
   ZoomOut,
@@ -30,12 +30,14 @@ export function ImageViewer({
   const {
     containerRef,
     imageRef,
+    wrapperRef,
     state,
     imageStyle,
     zoomIn,
     zoomOut,
     resetView,
     toggleFullscreen,
+    isFullscreen,
     handleWheel,
     handleMouseDown,
     handleMouseMove,
@@ -44,11 +46,9 @@ export function ImageViewer({
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
-  } = useImageViewer();
+  } = useImageViewer(src);
 
-  const zoomPercent = Math.round(state.scale * 100);
-
-  // Handle image load
+  // Handle image load - defined before viewerContent to avoid "used before declaration"
   const handleImageLoad = useCallback(() => {
     onLoad?.();
     // Auto-fit on first load
@@ -64,8 +64,8 @@ export function ImageViewer({
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!containerRef.current) return;
-      if (!containerRef.current.contains(document.activeElement) && !state.isFullscreen) return;
+      if (!wrapperRef.current) return;
+      if (!wrapperRef.current.contains(document.activeElement) && !isFullscreen) return;
 
       switch (e.key) {
         case '=':
@@ -87,7 +87,7 @@ export function ImageViewer({
           toggleFullscreen();
           break;
         case 'Escape':
-          if (state.isFullscreen) {
+          if (isFullscreen) {
             toggleFullscreen();
           }
           break;
@@ -96,7 +96,7 @@ export function ImageViewer({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [containerRef, state.isFullscreen, zoomIn, zoomOut, resetView, toggleFullscreen]);
+  }, [wrapperRef, isFullscreen, zoomIn, zoomOut, resetView, toggleFullscreen]);
 
   const viewerContent = (
     <div
@@ -129,79 +129,15 @@ export function ImageViewer({
     </div>
   );
 
-  if (state.isFullscreen) {
-    return (
-      <>
-        <div className="fullscreen-overlay" onClick={toggleFullscreen} aria-hidden="true">
-          <div className="fullscreen-content" onClick={(e) => e.stopPropagation()}>
-            {viewerContent}
-          </div>
-          <button
-            className="fullscreen-close btn-secondary p-2 rounded-full shadow-lg"
-            onClick={toggleFullscreen}
-            aria-label="Exit fullscreen"
-          >
-            <Minimize className="w-5 h-5" />
-          </button>
-          {showControls && (
-            <div className="fullscreen-controls bg-white/90 backdrop-blur rounded-lg shadow-lg p-2 flex items-center gap-1">
-              <button onClick={zoomOut} className="btn-secondary p-2" aria-label="Zoom out" title="Zoom out (-)">
-                <ZoomOut className="w-5 h-5" />
-              </button>
-              <button onClick={resetView} className="btn-secondary px-3 py-2" aria-label="Reset zoom" title="Reset zoom (0)">
-                <RotateCcw className="w-5 h-5" />
-              </button>
-              <button onClick={zoomIn} className="btn-secondary p-2" aria-label="Zoom in" title="Zoom in (+)">
-                <ZoomIn className="w-5 h-5" />
-              </button>
-              {showZoomPercent && (
-                <span className="px-3 text-sm font-mono text-slate-700 min-w-[4.5rem] text-center">
-                  {zoomPercent}%
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </>
-    );
-  }
+  // Always render the viewer content, but conditionally show controls
+  // The wrapperRef is used for fullscreen, so it wraps everything
+  const zoomPercent = Math.round(state.scale * 100);
 
   return (
-    <div className="w-full">
+    <div ref={wrapperRef} className="w-full">
       {viewerContent}
-      {showControls && (
-        <div className="flex items-center justify-between mt-3 gap-4">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={zoomOut}
-              className="btn-secondary p-2"
-              aria-label="Zoom out"
-              title="Zoom out (-)"
-            >
-              <ZoomOut className="w-5 h-5" />
-            </button>
-            <button
-              onClick={resetView}
-              className="btn-secondary px-3 py-2"
-              aria-label="Reset zoom"
-              title="Reset zoom (0)"
-            >
-              <RotateCcw className="w-5 h-5" />
-            </button>
-            <button
-              onClick={zoomIn}
-              className="btn-secondary p-2"
-              aria-label="Zoom in"
-              title="Zoom in (+)"
-            >
-              <ZoomIn className="w-5 h-5" />
-            </button>
-            {showZoomPercent && (
-              <span className="px-3 text-sm font-mono text-slate-700 min-w-[4.5rem] text-center border border-slate-200 rounded-lg bg-white">
-                {zoomPercent}%
-              </span>
-            )}
-          </div>
+      {!isFullscreen && showControls && (
+        <div className="flex justify-end mt-3">
           <button
             onClick={toggleFullscreen}
             className="btn-secondary px-3 py-2 gap-2"
@@ -213,9 +149,35 @@ export function ImageViewer({
           </button>
         </div>
       )}
-      <p className="mt-2 text-xs text-slate-500 text-center">
-        {state.scale > 1 ? 'Drag to pan · ' : ''}Scroll to zoom · Double-click to reset · F for fullscreen
-      </p>
+      {isFullscreen && showControls && (
+        <>
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 z-50 bg-white/95 backdrop-blur rounded-lg shadow-lg p-2">
+            <button onClick={zoomOut} className="btn-secondary p-2" aria-label="Zoom out" title="Zoom out (-)">
+              <ZoomOut className="w-5 h-5" />
+            </button>
+            <button onClick={resetView} className="btn-secondary px-3 py-2" aria-label="Reset zoom" title="Reset zoom (0)">
+              <RotateCcw className="w-5 h-5" />
+            </button>
+            <button onClick={zoomIn} className="btn-secondary p-2" aria-label="Zoom in" title="Zoom in (+)">
+              <ZoomIn className="w-5 h-5" />
+            </button>
+            {showZoomPercent && (
+              <span className="px-3 text-sm font-mono text-slate-700 min-w-[4.5rem] text-center">
+                {zoomPercent}%
+              </span>
+            )}
+            <button
+              onClick={toggleFullscreen}
+              className="btn-secondary px-3 py-2 gap-2"
+              aria-label="Exit fullscreen"
+              title="Exit fullscreen (Esc)"
+            >
+              <Minimize className="w-5 h-5" />
+              <span className="hidden sm:inline">Exit Fullscreen</span>
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
