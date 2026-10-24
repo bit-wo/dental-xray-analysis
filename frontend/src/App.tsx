@@ -6,8 +6,8 @@ import { FindingsInterpretation } from './components/FindingsInterpretation';
 import { ResultsSummary } from './components/ResultsSummary';
 import { useHealthCheck } from './hooks/useApi';
 import { useAnalyze } from './hooks/useApi';
-import type { AnalyzeResponse, ImageViewType } from './types/api';
-import { Smile, AlertCircle, CheckCircle, RotateCw, Zap, Loader2, AlertTriangle, Info } from 'lucide-react';
+import type { ImageViewType } from './types/api';
+import { Smile, AlertCircle, RotateCw, Zap, Loader2 } from 'lucide-react';
 
 function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -17,10 +17,9 @@ function App() {
   const [activeView, setActiveView] = useState<ImageViewType>('combined');
   const [analysisStage, setAnalysisStage] = useState<'idle' | 'processing' | 'complete' | 'error'>('idle');
   const [stageMessage, setStageMessage] = useState('');
-  const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const { health, checkHealth } = useHealthCheck();
-  const { analyze, loading, reset } = useAnalyze();
+  const { analyze, loading, reset, result } = useAnalyze();
 
   // Check health on mount and periodically
   useEffect(() => {
@@ -42,7 +41,6 @@ function App() {
     setDimensions(dims);
     setUploadError(null);
     setAnalysisStage('idle');
-    setResult(null);
     setAnalysisError(null);
     reset();
   }, [reset]);
@@ -53,7 +51,6 @@ function App() {
     setDimensions(null);
     setUploadError(null);
     setAnalysisStage('idle');
-    setResult(null);
     setAnalysisError(null);
     reset();
   }, [reset]);
@@ -87,10 +84,6 @@ function App() {
     }
   }, [selectedFile, handleAnalyze]);
 
-  const handleResetToInitial = useCallback(() => {
-    handleRemoveImage();
-  }, [handleRemoveImage]);
-
   const handleDownloadReport = useCallback(async () => {
     if (!result) return;
     
@@ -123,28 +116,6 @@ function App() {
       alert('Failed to generate PDF report: ' + (err instanceof Error ? err.message : 'Unknown error'));
     }
   }, [result, selectedFile]);
-
-  const handleImageSelect = useCallback((file: File, url: string, dims: { width: number; height: number }) => {
-    setSelectedFile(file);
-    setPreviewUrl(url);
-    setDimensions(dims);
-    setUploadError(null);
-    setAnalysisStage('idle');
-    setResult(null);
-    setAnalysisError(null);
-    reset();
-  }, [reset]);
-
-  const handleRemoveImage = useCallback(() => {
-    setSelectedFile(null);
-    setPreviewUrl(null);
-    setDimensions(null);
-    setUploadError(null);
-    setAnalysisStage('idle');
-    setResult(null);
-    setAnalysisError(null);
-    reset();
-  }, [reset]);
 
   const modelsLoaded = health?.models_loaded ?? false;
   const diseaseClasses = health?.disease_classes ?? [];
@@ -236,56 +207,55 @@ function App() {
             />
           </div>
 
-          {/* Analysis controls */}
-          {(analysisStage === 'idle' || analysisStage === 'complete' || analysisStage === 'error') && selectedFile && (
-            <div className="panel p-6">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-slate-500">Image:</span>
-                    <span className="font-medium text-slate-900">{selectedFile.name}</span>
-                  </div>
-                  {dimensions && (
-                    <span className="text-sm text-slate-500">
-                      {dimensions.width} × {dimensions.height} px
-                    </span>
-                  )}
-                  <span className="text-sm text-slate-500">
-                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {analysisStage === 'error' && (
-                    <button onClick={handleRetry} className="btn-primary" disabled={loading}>
-                      <RotateCw className="w-4 h-4" />
-                      <span>Retry</span>
-                    </button>
-                  )}
-                  {analysisStage !== 'processing' && (
-                    <button 
-                      onClick={handleAnalyze} 
-                      className="btn-primary" 
-                      disabled={loading || analysisStage === 'processing'}
-                    >
-                      {analysisStage === 'processing' ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Analyzing...</span>
-                        </>
-                      ) : (
-                        <>
+          {/* Analysis controls - show when there's a selected file */}
+          {selectedFile && (
+            <>
+              {/* Analysis controls - show for idle, complete, error states */}
+              {(analysisStage === 'idle' || analysisStage === 'complete' || analysisStage === 'error') && (
+                <div className="panel p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-500">Image:</span>
+                        <span className="font-medium text-slate-900">{selectedFile.name}</span>
+                      </div>
+                      {dimensions && (
+                        <span className="text-sm text-slate-500">
+                          {dimensions.width} × {dimensions.height} px
+                        </span>
+                      )}
+                      <span className="text-sm text-slate-500">
+                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {analysisStage === 'error' && (
+                        <button onClick={handleRetry} className="btn-primary" disabled={loading}>
+                          <RotateCw className="w-4 h-4" />
+                          <span>Retry</span>
+                        </button>
+                      )}
+                      {/* Only show Analyze button when idle or complete - processing has its own UI */}
+                      {(analysisStage === 'idle' || analysisStage === 'complete') && (
+                        <button 
+                          onClick={handleAnalyze} 
+                          className="btn-primary" 
+                          disabled={loading}
+                        >
                           <span className="hidden sm:inline">Analyze X-ray</span>
                           <Zap className="w-4 h-4" />
-                        </>
+                        </button>
                       )}
-                    </button>
-                  )}
-                  <button onClick={handleRemoveImage} className="btn-secondary" disabled={loading}>
-                    <span className="hidden sm:inline">Reset</span>
-                    <RotateCw className="w-4 h-4" />
-                  </button>
+                      <button onClick={handleRemoveImage} className="btn-secondary" disabled={loading}>
+                        <span className="hidden sm:inline">Reset</span>
+                        <RotateCw className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Processing UI - shown separately when analysisStage is 'processing' */}
               {analysisStage === 'processing' && (
                 <div className="mt-4">
                   <div className="flex items-center justify-center gap-3 mb-2">
@@ -302,6 +272,8 @@ function App() {
                   </div>
                 </div>
               )}
+
+              {/* Error UI - shown separately when analysisStage is 'error' */}
               {analysisStage === 'error' && (
                 <div className="mt-4 panel p-4 border-red-200 bg-red-50">
                   <div className="flex items-start gap-3">
@@ -322,7 +294,7 @@ function App() {
                   </div>
                 </div>
               )}
-            </div>
+            </>
           )}
 
           {/* Results section */}
@@ -345,7 +317,7 @@ function App() {
                 <ResultsSummary
                   summary={result.summary || null}
                   segmentation={result.segmentation || null}
-                  images={result.images || null}
+                  images={result.images as unknown as Record<string, string> | null}
                   onDownloadReport={handleDownloadReport}
                 />
               </section>
@@ -367,7 +339,7 @@ function App() {
                 and tooth associations can be wrong. Do not use this application to diagnose, exclude disease,
                 or decide treatment. A qualified dental professional must review the original X-ray.
               </div>
-            </section>
+            </div>
           )}
 
           {/* Reset button when analysis is complete */}

@@ -20,6 +20,7 @@ export function useImageViewer(src?: string) {
   });
   
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fitScale, setFitScale] = useState(1);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -27,11 +28,29 @@ export function useImageViewer(src?: string) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const isMountedRef = useRef(true);
 
+  // Calculate fit scale to fit image in container
+  const calculateFitScale = useCallback(() => {
+    if (!containerRef.current || !imageRef.current) return 1;
+    
+    const container = containerRef.current;
+    const image = imageRef.current;
+    
+    if (!image.naturalWidth || !image.naturalHeight) return 1;
+    
+    const containerRect = container.getBoundingClientRect();
+    const scaleX = containerRect.width / image.naturalWidth;
+    const scaleY = containerRect.height / image.naturalHeight;
+    
+    return Math.min(scaleX, scaleY, 1); // Don't upscale beyond 1x
+  }, []);
+
   // Reset view to fit container
   const resetView = useCallback(() => {
+    const fit = calculateFitScale();
+    setFitScale(fit);
     setState(prev => ({
       ...prev,
-      scale: DEFAULT_SCALE,
+      scale: fit,
       x: 0,
       y: 0,
     }));
@@ -41,6 +60,18 @@ export function useImageViewer(src?: string) {
   useEffect(() => {
     resetView();
   }, [src, resetView]);
+
+  // Update fit scale when container size changes (also on entering/exiting fullscreen)
+  useEffect(() => {
+    const fit = calculateFitScale();
+    setFitScale(fit);
+    setState(prev => ({
+      ...prev,
+      scale: fit,
+      x: 0,
+      y: 0,
+    }));
+  }, [src, isFullscreen, resetView]);
 
   // Zoom to specific scale, centered on a point
   const zoomTo = useCallback((scale: number, centerX?: number, centerY?: number) => {
@@ -124,7 +155,7 @@ export function useImageViewer(src?: string) {
   // Pan start
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return; // Only left click
-    if (state.scale <= DEFAULT_SCALE) return;
+    if (state.scale <= fitScale) return;
     
     e.preventDefault();
     panStartRef.current = { x: e.clientX, y: e.clientY };
@@ -132,7 +163,7 @@ export function useImageViewer(src?: string) {
     
     // Prevent text selection while panning
     document.body.style.userSelect = 'none';
-  }, [state.scale]);
+  }, [state.scale, fitScale]);
 
   // Pan move
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -292,11 +323,16 @@ export function useImageViewer(src?: string) {
     };
   }, []);
 
+  // Determine if we're zoomed beyond fit
+  const isZoomed = state.scale > fitScale;
+
+  // Image style: use object-fit: contain when not zoomed, transform when zoomed
   const imageStyle: React.CSSProperties = {
-    transform: `translate(${state.x}px, ${state.y}px) scale(${state.scale})`,
+    width: '100%',
+    height: '100%',
+    objectFit: isZoomed ? 'none' : 'contain',
+    transform: isZoomed ? `translate(${state.x}px, ${state.y}px) scale(${state.scale / fitScale})` : 'none',
     transformOrigin: '0 0',
-    maxWidth: 'none',
-    maxHeight: 'none',
   };
 
   return {

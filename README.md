@@ -24,11 +24,11 @@ dental-xray-app/
 │   ├── vite.config.ts
 │   ├── tailwind.config.js
 │   └── index.html
-├── models/                 # Trained model weights (preserved)
+├── models/                 # Trained model weights (tracked in Git, see "Model Files")
 │   ├── tooth-segmentation.pt
 │   └── dental-disease.pt
-├── src/                    # Original pipeline (preserved)
-│   └── pipeline.py
+├── src/                    # Shared inference pipeline (used by backend/app.py)
+│   └── pipeline.py         # CLAHE enhancement, YOLO models, FDI mapping, matching
 └── README.md
 ```
 
@@ -41,7 +41,7 @@ dental-xray-app/
 - **Multiple Views**: Original, Enhanced (CLAHE), Segmentation, Disease, Combined
 - **Findings Table**: Structured display with confidences, geometry metrics, and status
 - **Plain-Language Interpretations**: Human-readable explanations for each detection
-- **Downloadable Reports**: JSON reports with all results and metadata
+- **Downloadable Reports**: PDF reports generated server-side with ReportLab (`/api/report`)
 - **Responsive Design**: Works on desktop, tablet, and mobile
 
 ## Models
@@ -50,6 +50,17 @@ dental-xray-app/
 |-------|------|---------|--------|
 | Tooth Segmentation | `models/tooth-segmentation.pt` | 32 (FDI 11–48) | Custom-trained |
 | Disease Detection | `models/dental-disease.pt` | 4 (Caries, Deep Caries, Periapical Lesion, Impacted) | [Hugging Face](https://huggingface.co/chemahc94/caries-detection-weights) |
+
+### Model Files
+
+Both weight files are committed to this repository at their working locations:
+
+- `models/tooth-segmentation.pt` (7 MB)
+- `models/dental-disease.pt` (19 MB)
+
+Both are small enough for plain Git (no Git LFS required). Nothing needs to be obtained separately;
+if you ever clone a fork that excludes them, place the two files in `models/` with exactly those
+names — the backend refuses to start without them.
 
 ## Prerequisites
 
@@ -153,18 +164,24 @@ Accepts multipart/form-data with `file` field. Returns analysis results and imag
 ### `GET /api/images/<filename>`
 Serves generated overlay images from temporary storage.
 
+### `POST /api/report`
+Accepts JSON with the analysis result and the original filename. Returns a server-generated PDF
+(`application/pdf`) containing the summary, findings, and interpretation.
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  -d @analysis_result.json http://localhost:5000/api/report -o report.pdf
+```
+
 ## Usage
 
 1. Open http://localhost:5173 in your browser
-2. Navigate to "New Analysis" in the sidebar
-3. Drag and drop or click to upload a panoramic dental X-ray (PNG, JPG, TIFF, etc.)
-4. Click "Analyze X-ray" to run the pipeline
-5. Explore results:
+2. Drag and drop or click to upload a panoramic dental X-ray (PNG, JPG, TIFF, etc.)
+3. Click "Analyze X-ray" to run the pipeline
+4. Explore results:
    - Switch between Original, Enhanced, Segmentation, Disease, Combined views
-   - Zoom/pan with mouse wheel and drag
-   - Press `F` for fullscreen, `+`/`-` to zoom, `0` to reset
+   - Zoom/pan with mouse wheel (Ctrl) and drag; use the Fullscreen button or press `F`
    - Review findings table and interpretations
-   - Download JSON report
+   - Download PDF report
 
 ## Keyboard Shortcuts (in viewer)
 
@@ -199,9 +216,9 @@ Serves generated overlay images from temporary storage.
 - CORS is configured for `http://localhost:5173`
 
 ### Model loading errors
-- The disease model loads from Hugging Face on first run (downloads ~100MB)
-- Ensure internet access for first run
-- Subsequent runs use cached weights
+- Ensure both weight files exist (see "Model Files" above) and are named exactly
+  `models/tooth-segmentation.pt` and `models/dental-disease.pt`
+- YOLO weights load once at startup; a corrupted download causes `startup_error` in `/api/health`
 
 ### Analysis fails
 - Check image format (PNG, JPG, TIFF, BMP, WebP supported)

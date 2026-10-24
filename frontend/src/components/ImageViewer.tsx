@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useState } from 'react';
+import { useEffect, useCallback } from 'react';
 import {
   ZoomIn,
   ZoomOut,
@@ -101,7 +101,7 @@ export function ImageViewer({
   const viewerContent = (
     <div
       ref={containerRef}
-      className={`viewer-container rounded-lg overflow-hidden ${className}`}
+      className={`viewer-container rounded-lg overflow-hidden ${isFullscreen ? 'w-full flex-1 min-h-0' : className}`}
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -134,7 +134,7 @@ export function ImageViewer({
   const zoomPercent = Math.round(state.scale * 100);
 
   return (
-    <div ref={wrapperRef} className="w-full">
+    <div ref={wrapperRef} className={isFullscreen ? 'w-full h-full flex flex-col' : 'w-full'}>
       {viewerContent}
       {!isFullscreen && showControls && (
         <div className="flex justify-end mt-3">

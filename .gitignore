@@ -1,4 +1,5 @@
-# Model weights and datasets should not be committed
+# Model weights and datasets are tracked in Git (largest file is ~19 MB).
+# datasets/ below refers to raw training datasets only.
 datasets/
 
 # Python
@@ -8,8 +9,22 @@ __pycache__/
 venv/
 .env
 
-# Notebooks and generated output
+# Notes and generated output
 .ipynb_checkpoints/
 outputs/
 *.csv
 .DS_Store
+
+# Runtime outputs of the Flask backend (generated per analysis, regenerated on next run)
+backend/temp/
+
+# Generated PDF test reports
+backend/test_report*.pdf
+
+# Node / frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+node_modules/
+
+# Legacy Gradio runtime artifacts
+.gradio/

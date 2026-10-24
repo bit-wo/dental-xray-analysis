@@ -56,13 +56,13 @@ export function ImageComparison({
         </div>
       </div>
       <div className="p-4">
-        <div className="relative aspect-[4/3] min-h-[400px] max-h-[70vh]">
+        <div className="relative">
           <ImageViewer
             src={images[activeView]!}
             alt={IMAGE_VIEW_LABELS[activeView]}
             showControls={true}
             showZoomPercent={true}
-            className="w-full h-full"
+            className="w-full h-auto max-h-[70vh]"
           />
         </div>
         <p className="mt-3 text-sm text-slate-500 text-center">
