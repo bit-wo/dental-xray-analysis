@@ -105,7 +105,7 @@ Keep this terminal open with the virtual environment activated.
 Open a second terminal and navigate to the repository:
 
 ```bash
-cd ~/Programming/dental-xray-app/frontend
+cd ~/dental-xray-app/frontend
 npm install
 ```
 
@@ -118,7 +118,7 @@ If you cloned the repository elsewhere, replace the path with your actual projec
 From the `backend/` directory, activate the virtual environment if necessary and start Flask:
 
 ```bash
-cd ~/Programming/dental-xray-app/backend
+cd ~/dental-xray-app/backend
 source .venv/bin/activate
 python app.py
 ```
@@ -128,7 +128,7 @@ python app.py
 In a second terminal:
 
 ```bash
-cd ~/Programming/dental-xray-app/frontend
+cd ~/dental-xray-app/frontend
 npm run dev
 ```
 
